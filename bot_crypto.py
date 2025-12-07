@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sys
+from datetime import datetime
 
 from dotenv import load_dotenv
 from telegram import Update
@@ -161,10 +162,23 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "quantity": 0.0,
                 "total_spent": 0.0,
                 "total_received": 0.0,
+                "transactions": [],
             }
+
+        if "transactions" not in portfolio[token]:
+            portfolio[token]["transactions"] = []
 
         portfolio[token]["quantity"] += quantity
         portfolio[token]["total_spent"] += usdt_amount
+        
+        # Record Transaction
+        portfolio[token]["transactions"].append({
+            "type": "buy",
+            "quantity": quantity,
+            "price": price,
+            "usdt_amount": usdt_amount,
+            "timestamp": datetime.now().isoformat()
+        })
 
         # Lưu lại vào file riêng
         save_portfolio(user_id, portfolio)
@@ -230,6 +244,18 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data["quantity"] -= qty_sold
 
         data["total_received"] += usdt_received
+
+        if "transactions" not in data:
+            data["transactions"] = []
+
+        # Record Transaction
+        data["transactions"].append({
+            "type": "sell",
+            "quantity": qty_sold,
+            "price": sell_price,
+            "usdt_received": usdt_received,
+            "timestamp": datetime.now().isoformat()
+        })
 
         save_portfolio(user_id, portfolio)
 
