@@ -1,0 +1,60 @@
+{
+    "auth": {
+        "unauthorized_log": "Unauthorized access attempt from user ID: {user_id}",
+        "unauthorized_msg": "⛔ **BẠN KHÔNG CÓ QUYỀN TRUY CẬP BOT NÀY.**"
+    },
+    "error": {
+        "token_missing": "❌ LỖI: Không tìm thấy Token!",
+        "env_instruction": "👉 Hãy tạo file '.env' và thêm dòng: TELEGRAM_TOKEN=your_token_here",
+        "allowed_id_warning": "⚠️ CẢNH BÁO: Bạn chưa cài ALLOWED_USER_ID trong file .env. Bot đang công khai cho mọi người!",
+        "value_error": "⚠️ Lỗi nhập số.",
+        "reset_error": "⚠️ Có lỗi khi reset: {error}"
+    },
+    "status": {
+        "profit": "🟢 LÃI RÒNG",
+        "loss": "🔴 LỖ THỰC TẾ",
+        "sold_all": "{emoji}: ${pnl:,.2f} (Đã tất toán)",
+        "free_coin": "♾️ **Đã lãi gốc ${profit_taken:,.2f}**. (Số coin còn lại là Free)",
+        "break_even": "⚖️ **Hoà vốn tại giá: ${be_price:,.2f}**",
+        "stop_loss": "\n🛑 **Dừng lỗ tại giá: ${sl_price:,.2f}** (Chấp nhận lỗ ${stop_loss_limit})",
+        "stop_loss_line": "\n   🛑 Dừng lỗ: ${sl_price:,.2f}",
+        "net_pnl_all": "DÒNG TIỀN RÒNG"
+    },
+    "commands": {
+        "start": "📊 **Bot Quản Lý Phân bổ vốn Crypto**\n\nCác lệnh đầy đủ (Command Handler đầy đủ):\n1️⃣ `/buy <Tên> <Số Tiền USDT> <Giá>`\n2️⃣ `/sell <Tên> <Số Tiền USDT> <Giá>`\n3️⃣ `/list` - Xem báo cáo dòng tiền\n4️⃣ `/sl <Tên> <Số USDT lỗ tối đa>` - Cài Stoploss\n5️⃣ `/reset` - ⚠️ Xoá toàn bộ dữ liệu làm lại từ đầu\n\nCác lệnh ngắn gọn (Command Handler ngắn gọn):\n6️⃣ `/b <Tên> <Số Tiền USDT> <Giá>`\n7️⃣ `/s <Tên> <Số Tiền USDT> <Giá>`\n8️⃣ `/ls` - Xem báo cáo dòng tiền\n9️⃣ `/rs` - ⚠️ Xoá toàn bộ dữ liệu làm lại từ đầu",
+        "buy": {
+            "usage": "⚠️ Dùng theo cú pháp sau /buy <Tên> <Số Tiền USDT> <Giá>. Ví dụ: /buy BTC 1000 65000",
+            "success": "📥 **MUA THÊM {token}**\n➕ Mua: `{quantity:.6f}` {token} (Giá ${price:,.2f})\n💸 Chi lệnh này: `${usdt_amount:,.2f}`\n--------------------------\n📊 **Tổng kết {token}:**\n🔴 Tổng CHI: `${total_spent:,.2f}`\n🟢 Tổng THU: `${total_received:,.2f}`\n📦 Holding: `{quantity_hold:.6f}`\n{status}"
+        },
+        "sell": {
+            "usage": "⚠️ Dùng theo cú pháp sau /sell <Tên> <Số Tiền USDT> <Giá>. Ví dụ: /sell BTC 999999 70000",
+            "not_hold": "⚠️ Bạn chưa có {token} để bán.",
+            "success": "📤 **BÁN RA {token}**\n➖ Bán: `{qty_sold:.6f}` {token} (Giá ${sell_price:,.2f})\n💵 Thu về lệnh này: `${usdt_received:,.2f}`\n--------------------------\n📊 **Tổng kết {token}:**\n🔴 Tổng CHI: `${total_spent:,.2f}`\n🟢 Tổng THU: `${total_received:,.2f}`\n📦 Holding: `{quantity_hold:.6f}`\n{status}"
+        },
+        "list": {
+            "empty": "📂 Portfolio của bạn đang trống.",
+            "header": "📑 **BÁO CÁO DÒNG TIỀN (CASH FLOW)**\n",
+            "item_sold": "   🏁 Đã tất toán. PnL: {emoji} ${pnl:,.2f}",
+            "item_free": "   ♾️ Đã lãi gốc: ${profit_taken:,.2f} (Free Coin)",
+            "item_hold": "   ⚖️ Hoà vốn: ${be:,.2f}",
+            "item_full_line1": "🔹 **{token}** (Hold: {qty:.4f})\n",
+            "item_full_line2": "   🔴 Chi: ${spent:,.2f} | 🟢 Thu: ${received:,.2f}\n",
+            "footer_line1": "-----------------------------",
+            "footer_line2": "TOTAL CHI: `${grand_total_spent:,.2f}`",
+            "footer_line3": "TOTAL THU: `${grand_total_received:,.2f}`",
+            "footer_line4": "DÒNG TIỀN RÒNG: `${net_pnl_all:,.2f}`"
+        },
+        "sl": {
+            "usage": "⚠️ Dùng: /sl BTC 100 (tức là chấp nhận lỗ 100$)",
+            "invalid_amount": "⚠️ Số tiền lỗ phải >= 0",
+            "not_found": "⚠️ Bạn chưa có {token} trong danh mục.",
+            "success": "✅ Đã cài đặt dừng lỗ cho **{token}** là ${amount}.",
+            "trigger_at": "\n🛑 Dừng lỗ sẽ kích hoạt tại giá: **${price:,.2f}**",
+            "profit_ignore": "\n(Hiện đang lãi gốc/free coin, chưa cần cắt lỗ trên vốn)",
+            "no_hold_ignore": "\n(Hiện không còn hold coin này)"
+        },
+        "reset": {
+            "success": "🗑️ Đã xoá Portfolio của bạn.**\nBạn có thể bắt đầu lại từ đầu."
+        }
+    }
+}

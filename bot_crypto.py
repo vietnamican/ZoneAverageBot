@@ -24,18 +24,33 @@ ALLOWED_USER_IDS = set(
 
 # 3. Kiểm tra xem đã lấy được Token chưa
 if not TOKEN:
-    print("❌ LỖI: Không tìm thấy Token!")
-    print("👉 Hãy tạo file '.env' và thêm dòng: TELEGRAM_TOKEN=your_token_here")
+    print(TEXT["error"]["token_missing"])
+    print(TEXT["error"]["env_instruction"])
     sys.exit(1)  # Dừng chương trình ngay lập tức
 
 if not ALLOWED_USER_IDS:
     print(
-        "⚠️ CẢNH BÁO: Bạn chưa cài ALLOWED_USER_ID trong file .env. Bot đang công khai cho mọi người!"
+        TEXT["error"]["allowed_id_warning"]
     )
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
+
+# --- LOCALIZATION ---
+def load_locales(lang='vi'):
+    path = os.path.join(os.path.dirname(__file__), 'locales', f'{lang}.json')
+    if not os.path.exists(path):
+        logging.warning(f"Locale file not found: {path}, using default dict")
+        return {}
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        logging.error(f"Failed to load locale: {e}")
+        return {}
+
+TEXT = load_locales('vi')
 
 
 # --- SECURITY LAYER ---
@@ -51,8 +66,8 @@ async def check_authorization(update: Update) -> bool:
 
     if user_id not in ALLOWED_USER_IDS:
         # Tùy chọn: Có thể log lại attempt truy cập trái phép
-        logging.warning(f"Unauthorized access attempt from user ID: {user_id}")
-        await update.message.reply_text("⛔ **BẠN KHÔNG CÓ QUYỀN TRUY CẬP BOT NÀY.**")
+        logging.warning(TEXT["auth"]["unauthorized_log"].format(user_id=user_id))
+        await update.message.reply_text(TEXT["auth"]["unauthorized_msg"])
         return False
 
     return True
@@ -94,23 +109,26 @@ def get_status_text(total_spent, total_received, quantity, stop_loss_limit=0):
     if quantity <= 0:
         # Đã bán hết
         pnl = -net_cost  # (Thu - Chi)
-        emoji = "🟢 LÃI RÒNG" if pnl >= 0 else "🔴 LỖ THỰC TẾ"
-        return f"{emoji}: ${pnl:,.2f} (Đã tất toán)"
+        emoji = TEXT["status"]["profit"] if pnl >= 0 else TEXT["status"]["loss"]
+        return TEXT["status"]["sold_all"].format(emoji=emoji, pnl=pnl)
 
     # Vẫn còn coin
     if net_cost <= 0:
         # Đã thu hồi đủ vốn, số coin còn lại là miễn phí (Moonbag)
         profit_taken = -net_cost
-        return f"♾️ **Đã lãi gốc ${profit_taken:,.2f}**. (Số coin còn lại là Free)"
+        return TEXT["status"]["free_coin"].format(profit_taken=profit_taken)
     else:
         # Vẫn còn vốn kẹt, tính giá hoà vốn
         be_price = net_cost / quantity
-        base_text = f"⚖️ **Hoà vốn tại giá: ${be_price:,.2f}**"
+        base_text = TEXT["status"]["break_even"].format(be_price=be_price)
         
         # Tính điểm dừng lỗ nếu có cài đặt
-        if stop_loss_limit > 0 and net_cost > stop_loss_limit:
-            sl_price = (net_cost - stop_loss_limit) / quantity
-            base_text += f"\n🛑 **Dừng lỗ tại giá: ${sl_price:,.2f}** (Chấp nhận lỗ ${stop_loss_limit})"
+        if stop_loss_limit > 0:
+            if net_cost > stop_loss_limit:
+                sl_price = (net_cost - stop_loss_limit) / quantity
+            else:
+                sl_price = 0.0
+            base_text += TEXT["status"]["stop_loss"].format(sl_price=sl_price, stop_loss_limit=stop_loss_limit)
             
         return base_text
 
@@ -123,21 +141,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_authorization(update):
         return
 
-    msg = (
-        "📊 **Bot Quản Lý Dòng Tiền Crypto**\n\n"
-        "Các lệnh đầy đủ (Command Handler đầy đủ):\n"
-        "1️⃣ `/buy <Tên> <Số Tiền USDT> <Giá>`\n"
-        "2️⃣ `/sell <Tên> <Số Tiền USDT> <Giá>`\n"
-        "3️⃣ `/list` - Xem báo cáo dòng tiền\n"
-        "4️⃣ `/sl <Tên> <Số USDT lỗ tối đa>` - Cài Stoploss\n"
-        "5️⃣ `/reset` - ⚠️ Xoá toàn bộ dữ liệu làm lại từ đầu\n"
-        "\n"
-        "Các lệnh ngắn gọn (Command Handler ngắn gọn):\n"
-        "6️⃣ `/b <Tên> <Số Tiền USDT> <Giá>`\n"
-        "7️⃣ `/s <Tên> <Số Tiền USDT> <Giá>`\n"
-        "8️⃣ `/ls` - Xem báo cáo dòng tiền\n"
-        "9️⃣ `/rs` - ⚠️ Xoá toàn bộ dữ liệu làm lại từ đầu"
-    )
+    msg = TEXT["commands"]["start"]
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 
@@ -150,7 +154,7 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         args = context.args
         if len(args) != 3:
-            await update.message.reply_text("⚠️ Dùng: /buy BTC 1000 65000")
+            await update.message.reply_text(TEXT["commands"]["buy"]["usage"])
             return
 
         token = args[0].upper()
@@ -197,21 +201,20 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data["total_spent"], data["total_received"], data["quantity"], sl_limit
         )
 
-        msg = (
-            f"📥 **MUA THÊM {token}**\n"
-            f"➕ Mua: `{quantity:.6f}` {token} (Giá ${price:,.2f})\n"
-            f"💸 Chi lệnh này: `${usdt_amount:,.2f}`\n"
-            f"--------------------------\n"
-            f"📊 **Tổng kết {token}:**\n"
-            f"🔴 Tổng CHI: `${data['total_spent']:,.2f}`\n"
-            f"🟢 Tổng THU: `${data['total_received']:,.2f}`\n"
-            f"📦 Holding: `{data['quantity']:.6f}`\n"
-            f"{status}"
-        )
+        msg = TEXT["commands"]["buy"]["success"].format(
+                token=token,
+                quantity=quantity,
+                price=price,
+                usdt_amount=usdt_amount,
+                total_spent=data['total_spent'],
+                total_received=data['total_received'],
+                quantity_hold=data['quantity'],
+                status=status
+            )
         await update.message.reply_text(msg, parse_mode="Markdown")
 
     except ValueError:
-        await update.message.reply_text("⚠️ Lỗi nhập số.")
+        await update.message.reply_text(TEXT["error"]["value_error"])
 
 
 async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -224,7 +227,7 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args
         if len(args) != 3:
             await update.message.reply_text(
-                "⚠️ Dùng: /sell BTC 999999 70000 (để bán hết)"
+                TEXT["commands"]["sell"]["usage"]
             )
             return
 
@@ -235,7 +238,7 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
         portfolio = load_portfolio(user_id)
 
         if token not in portfolio or portfolio[token]["quantity"] <= 0:
-            await update.message.reply_text(f"⚠️ Bạn chưa có {token} để bán.")
+            await update.message.reply_text(TEXT["commands"]["sell"]["not_hold"].format(token=token))
             return
 
         data = portfolio[token]
@@ -273,21 +276,20 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data["total_spent"], data["total_received"], data["quantity"], sl_limit
         )
 
-        msg = (
-            f"📤 **BÁN RA {token}**\n"
-            f"➖ Bán: `{qty_sold:.6f}` {token} (Giá ${sell_price:,.2f})\n"
-            f"💵 Thu về lệnh này: `${usdt_received:,.2f}`\n"
-            f"--------------------------\n"
-            f"📊 **Tổng kết {token}:**\n"
-            f"🔴 Tổng CHI: `${data['total_spent']:,.2f}`\n"
-            f"🟢 Tổng THU: `${data['total_received']:,.2f}`\n"
-            f"📦 Holding: `{data['quantity']:.6f}`\n"
-            f"{status}"
-        )
+        msg = TEXT["commands"]["sell"]["success"].format(
+                token=token,
+                qty_sold=qty_sold,
+                sell_price=sell_price,
+                usdt_received=usdt_received,
+                total_spent=data['total_spent'],
+                total_received=data['total_received'],
+                quantity_hold=data['quantity'],
+                status=status
+            )
         await update.message.reply_text(msg, parse_mode="Markdown")
 
     except ValueError:
-        await update.message.reply_text("⚠️ Lỗi nhập số.")
+        await update.message.reply_text(TEXT["error"]["value_error"])
 
 
 async def list_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -299,10 +301,10 @@ async def list_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     portfolio = load_portfolio(user_id)
 
     if not portfolio:
-        await update.message.reply_text("📂 Portfolio của bạn đang trống.")
+        await update.message.reply_text(TEXT["commands"]["list"]["empty"])
         return
 
-    message_lines = ["📑 **BÁO CÁO DÒNG TIỀN (CASH FLOW)**", ""]
+    message_lines = [TEXT["commands"]["list"]["header"], ""]
 
     grand_total_spent = 0
     grand_total_received = 0
@@ -323,35 +325,37 @@ async def list_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if qty <= 0:
             pnl = received - spent
-            emoji = "🟢" if pnl >= 0 else "🔴"
-            status_line = f"   🏁 Đã tất toán. PnL: {emoji} ${pnl:,.2f}"
+            emoji = TEXT["status"]["profit"] if pnl >= 0 else TEXT["status"]["loss"]
+            status_line = TEXT["commands"]["list"]["item_sold"].format(emoji=emoji, pnl=pnl)
         elif net_cost <= 0:
-            status_line = f"   ♾️ Đã lãi gốc: ${-net_cost:,.2f} (Free Coin)"
+            status_line = TEXT["commands"]["list"]["item_free"].format(profit_taken=-net_cost)
         else:
             be = net_cost / qty
-            status_line = f"   ⚖️ Hoà vốn: ${be:,.2f}"
+            status_line = TEXT["commands"]["list"]["item_hold"].format(be=be)
             
             # Check Stop Loss
             sl_limit = data.get("stop_loss_limit", 0)
-            if sl_limit > 0 and net_cost > sl_limit:
-                 sl_price = (net_cost - sl_limit) / qty
-                 status_line += f"\n   🛑 Dừng lỗ: ${sl_price:,.2f}"
+            if sl_limit > 0:
+                if net_cost > sl_limit:
+                    sl_price = (net_cost - sl_limit) / qty
+                else:
+                    sl_price = 0.0
+                status_line += TEXT["status"]["stop_loss_line"].format(sl_price=sl_price)
 
         message_lines.append(
-            f"🔹 **{token}** (Hold: {qty:.4f})\n"
-            f"   🔴 Chi: ${spent:,.2f} | 🟢 Thu: ${received:,.2f}\n"
-            f"{status_line}"
-            # f"-----------------------------"
+            TEXT["commands"]["list"]["item_full_line1"].format(token=token, qty=qty) +
+            TEXT["commands"]["list"]["item_full_line2"].format(spent=spent, received=received) +
+            status_line
         )
         message_lines.append("\n")
     message_lines.pop()
 
     net_pnl_all = grand_total_received - grand_total_spent
 
-    message_lines.append("-----------------------------")
-    message_lines.append(f"TOTAL CHI: `${grand_total_spent:,.2f}`")
-    message_lines.append(f"TOTAL THU: `${grand_total_received:,.2f}`")
-    message_lines.append(f"DÒNG TIỀN RÒNG: `${net_pnl_all:,.2f}`")
+    message_lines.append(TEXT["commands"]["list"]["footer_line1"])
+    message_lines.append(TEXT["commands"]["list"]["footer_line2"].format(grand_total_spent=grand_total_spent))
+    message_lines.append(TEXT["commands"]["list"]["footer_line3"].format(grand_total_received=grand_total_received))
+    message_lines.append(TEXT["commands"]["list"]["footer_line4"].format(net_pnl_all=net_pnl_all))
 
     await update.message.reply_text("\n".join(message_lines), parse_mode="Markdown")
 
@@ -366,10 +370,10 @@ async def reset_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Chỉ save file rỗng vào ID của người gọi lệnh
         save_portfolio(user_id, {})
         await update.message.reply_text(
-            "🗑️ Đã xoá Portfolio của bạn.**\nBạn có thể bắt đầu lại từ đầu."
+            TEXT["commands"]["reset"]["success"]
         )
     except Exception as e:
-        await update.message.reply_text(f"⚠️ Có lỗi khi reset: {e}")
+        await update.message.reply_text(TEXT["error"]["reset_error"].format(error=e))
 
 
 async def set_stop_loss(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -381,19 +385,19 @@ async def set_stop_loss(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         args = context.args
         if len(args) != 2:
-            await update.message.reply_text("⚠️ Dùng: /sl BTC 100 (tức là chấp nhận lỗ 100$)")
+            await update.message.reply_text(TEXT["commands"]["sl"]["usage"])
             return
 
         token = args[0].upper()
         stop_loss_amount = float(args[1])
 
         if stop_loss_amount < 0:
-            await update.message.reply_text("⚠️ Số tiền lỗ phải >= 0")
+            await update.message.reply_text(TEXT["commands"]["sl"]["invalid_amount"])
             return
             
         portfolio = load_portfolio(user_id)
         if token not in portfolio:
-             await update.message.reply_text(f"⚠️ Bạn chưa có {token} trong danh mục.")
+             await update.message.reply_text(TEXT["commands"]["sl"]["not_found"].format(token=token))
              return
 
         # Lưu thông tin dừng lỗ
@@ -405,20 +409,20 @@ async def set_stop_loss(update: Update, context: ContextTypes.DEFAULT_TYPE):
         qty = data["quantity"]
         net_cost = data["total_spent"] - data["total_received"]
         
-        confirmation = f"✅ Đã cài đặt dừng lỗ cho **{token}** là ${stop_loss_amount}."
+        confirmation = TEXT["commands"]["sl"]["success"].format(token=token, amount=stop_loss_amount)
         
         if qty > 0 and net_cost > stop_loss_amount:
             sl_price = (net_cost - stop_loss_amount) / qty
-            confirmation += f"\n🛑 Dừng lỗ sẽ kích hoạt tại giá: **${sl_price:,.2f}**"
+            confirmation += TEXT["commands"]["sl"]["trigger_at"].format(price=sl_price)
         elif qty > 0 and net_cost <= 0:
-             confirmation += "\n(Hiện đang lãi gốc/free coin, chưa cần cắt lỗ trên vốn)"
+             confirmation += TEXT["commands"]["sl"]["profit_ignore"]
         elif qty <= 0:
-             confirmation += "\n(Hiện không còn hold coin này)"
+             confirmation += TEXT["commands"]["sl"]["no_hold_ignore"]
              
         await update.message.reply_text(confirmation, parse_mode="Markdown")
 
     except ValueError:
-        await update.message.reply_text("⚠️ Lỗi nhập số.")
+        await update.message.reply_text(TEXT["error"]["value_error"])
 
 
 # --- MAIN ---
