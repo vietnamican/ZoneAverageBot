@@ -85,7 +85,7 @@ def save_portfolio(user_id: str, data: dict):
 
 
 # --- HÀM TÍNH TOÁN HỖ TRỢ ---
-def get_status_text(total_spent, total_received, quantity):
+def get_status_text(total_spent, total_received, quantity, stop_loss_limit=0):
     """
     Tính toán trạng thái vốn và điểm hoà vốn
     """
@@ -105,7 +105,14 @@ def get_status_text(total_spent, total_received, quantity):
     else:
         # Vẫn còn vốn kẹt, tính giá hoà vốn
         be_price = net_cost / quantity
-        return f"⚖️ **Hoà vốn tại giá: ${be_price:,.2f}**"
+        base_text = f"⚖️ **Hoà vốn tại giá: ${be_price:,.2f}**"
+        
+        # Tính điểm dừng lỗ nếu có cài đặt
+        if stop_loss_limit > 0 and net_cost > stop_loss_limit:
+            sl_price = (net_cost - stop_loss_limit) / quantity
+            base_text += f"\n🛑 **Dừng lỗ tại giá: ${sl_price:,.2f}** (Chấp nhận lỗ ${stop_loss_limit})"
+            
+        return base_text
 
 
 # --- CÁC HÀM XỬ LÝ LỆNH ---
@@ -122,13 +129,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "1️⃣ `/buy <Tên> <Số Tiền USDT> <Giá>`\n"
         "2️⃣ `/sell <Tên> <Số Tiền USDT> <Giá>`\n"
         "3️⃣ `/list` - Xem báo cáo dòng tiền\n"
-        "4️⃣ `/reset` - ⚠️ Xoá toàn bộ dữ liệu làm lại từ đầu\n"
+        "4️⃣ `/sl <Tên> <Số USDT lỗ tối đa>` - Cài Stoploss\n"
+        "5️⃣ `/reset` - ⚠️ Xoá toàn bộ dữ liệu làm lại từ đầu\n"
         "\n"
         "Các lệnh ngắn gọn (Command Handler ngắn gọn):\n"
-        "5️⃣ `/b <Tên> <Số Tiền USDT> <Giá>`\n"
-        "6️⃣ `/s <Tên> <Số Tiền USDT> <Giá>`\n"
-        "7️⃣ `/ls` - Xem báo cáo dòng tiền\n"
-        "8️⃣ `/rs` - ⚠️ Xoá toàn bộ dữ liệu làm lại từ đầu"
+        "6️⃣ `/b <Tên> <Số Tiền USDT> <Giá>`\n"
+        "7️⃣ `/s <Tên> <Số Tiền USDT> <Giá>`\n"
+        "8️⃣ `/ls` - Xem báo cáo dòng tiền\n"
+        "9️⃣ `/rs` - ⚠️ Xoá toàn bộ dữ liệu làm lại từ đầu"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -184,8 +192,9 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_portfolio(user_id, portfolio)
 
         data = portfolio[token]
+        sl_limit = data.get("stop_loss_limit", 0)
         status = get_status_text(
-            data["total_spent"], data["total_received"], data["quantity"]
+            data["total_spent"], data["total_received"], data["quantity"], sl_limit
         )
 
         msg = (
@@ -259,8 +268,9 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         save_portfolio(user_id, portfolio)
 
+        sl_limit = data.get("stop_loss_limit", 0)
         status = get_status_text(
-            data["total_spent"], data["total_received"], data["quantity"]
+            data["total_spent"], data["total_received"], data["quantity"], sl_limit
         )
 
         msg = (
@@ -320,6 +330,12 @@ async def list_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             be = net_cost / qty
             status_line = f"   ⚖️ Hoà vốn: ${be:,.2f}"
+            
+            # Check Stop Loss
+            sl_limit = data.get("stop_loss_limit", 0)
+            if sl_limit > 0 and net_cost > sl_limit:
+                 sl_price = (net_cost - sl_limit) / qty
+                 status_line += f"\n   🛑 Dừng lỗ: ${sl_price:,.2f}"
 
         message_lines.append(
             f"🔹 **{token}** (Hold: {qty:.4f})\n"
@@ -356,6 +372,55 @@ async def reset_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ Có lỗi khi reset: {e}")
 
 
+async def set_stop_loss(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 1. Kiểm tra quyền
+    if not await check_authorization(update):
+        return
+
+    user_id = str(update.effective_user.id)
+    try:
+        args = context.args
+        if len(args) != 2:
+            await update.message.reply_text("⚠️ Dùng: /sl BTC 100 (tức là chấp nhận lỗ 100$)")
+            return
+
+        token = args[0].upper()
+        stop_loss_amount = float(args[1])
+
+        if stop_loss_amount < 0:
+            await update.message.reply_text("⚠️ Số tiền lỗ phải >= 0")
+            return
+            
+        portfolio = load_portfolio(user_id)
+        if token not in portfolio:
+             await update.message.reply_text(f"⚠️ Bạn chưa có {token} trong danh mục.")
+             return
+
+        # Lưu thông tin dừng lỗ
+        portfolio[token]["stop_loss_limit"] = stop_loss_amount
+        save_portfolio(user_id, portfolio)
+
+        # Tính toán giá stop loss để hiển thị ngay
+        data = portfolio[token]
+        qty = data["quantity"]
+        net_cost = data["total_spent"] - data["total_received"]
+        
+        confirmation = f"✅ Đã cài đặt dừng lỗ cho **{token}** là ${stop_loss_amount}."
+        
+        if qty > 0 and net_cost > stop_loss_amount:
+            sl_price = (net_cost - stop_loss_amount) / qty
+            confirmation += f"\n🛑 Dừng lỗ sẽ kích hoạt tại giá: **${sl_price:,.2f}**"
+        elif qty > 0 and net_cost <= 0:
+             confirmation += "\n(Hiện đang lãi gốc/free coin, chưa cần cắt lỗ trên vốn)"
+        elif qty <= 0:
+             confirmation += "\n(Hiện không còn hold coin này)"
+             
+        await update.message.reply_text(confirmation, parse_mode="Markdown")
+
+    except ValueError:
+        await update.message.reply_text("⚠️ Lỗi nhập số.")
+
+
 # --- MAIN ---
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
@@ -365,6 +430,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("buy", buy))
     app.add_handler(CommandHandler("sell", sell))
     app.add_handler(CommandHandler("list", list_portfolio))
+    app.add_handler(CommandHandler("sl", set_stop_loss))
     app.add_handler(CommandHandler("reset", reset_portfolio))
 
     # Command Handler ngắn gọn
