@@ -21,6 +21,7 @@ git clone <repo_url>
 cd Telegram
 pip install -r requirements.txt
 ```
+Nếu không clone thì bạn có thể tải project dưới dạng file zip.
 
 ## Cấu hình môi trường (.env)
 
